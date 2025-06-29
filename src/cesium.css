@@ -1,0 +1,23 @@
+/* Cesium container styles */
+.cesium-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  pointer-events: none; /* Allow click events to pass through to R3F */
+}
+
+/* Hide Cesium widget elements we don't need */
+.cesium-widget-credits {
+  display: none !important;
+}
+
+/* Make sure the R3F canvas stays on top */
+canvas[data-engine="three.js"] {
+  position: relative !important;
+  z-index: 5 !important;
+}

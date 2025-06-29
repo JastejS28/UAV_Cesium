@@ -11,7 +11,7 @@ import FireEffect from './attack-drone/FireEffect';
 
 const SCAN_RADIUS = 20;
 
-const Jeep = ({ position, id = 'jeep-1' }) => {
+const Jeep = ({ position = [20, 19, 30], id = 'jeep-1' }) => {
   const { scene } = useGLTF('/models/jeep/jeep.glb');
   const { addTarget, position: uavPosition, targets } = useUAVStore();
   const { destroyedTargets } = useAttackDroneStore();

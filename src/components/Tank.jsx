@@ -11,7 +11,7 @@ import FireEffect from './attack-drone/FireEffect';
 
 const SCAN_RADIUS = 20;
 
-const Tank = ({ position, id = 'tank-1' }) => {
+const Tank = ({ position = [40, 19, 16], id = 'tank-1' }) => {
   const { scene } = useGLTF('/models/tank/tank.glb');
   const { addTarget, position: uavPosition, targets } = useUAVStore();
   const { destroyedTargets } = useAttackDroneStore();

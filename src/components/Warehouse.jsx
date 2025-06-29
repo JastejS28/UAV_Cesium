@@ -11,7 +11,7 @@ import FireEffect from './attack-drone/FireEffect';
 
 const SCAN_RADIUS = 20;
 
-const Warehouse = ({ position, id = 'warehouse-1' }) => {
+const Warehouse = ({ position = [-20, 20, -20], id = 'warehouse-1' }) => {
   const { scene } = useGLTF('/models/building/warehouse.glb');
   // For destroyed warehouse, load it directly
   const { scene: destroyedScene } = useGLTF('/models/building/destroyed-warehouse.glb', true);

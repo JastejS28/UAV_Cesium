@@ -1,4 +1,7 @@
 import * as THREE from 'three';
+import React, { useEffect } from 'react';
+import { useThree } from '@react-three/fiber';
+import { useUAVStore } from '../store/uavStore';
 
 // JS-side color constants (matching GLSL values)
 const C_RED = new THREE.Color(0.95, 0.1, 0.05);
@@ -104,8 +107,38 @@ export const THERMAL_MATERIALS = {
   cool: new THREE.MeshBasicMaterial({ color: C_BLUE }),
 };
 
-// Component that just defines materials
+// Component that adds a thermal overlay when thermal vision is active
 const ThermalVisionEffect = () => {
+  const { isThermalVision } = useUAVStore();
+  const { gl } = useThree();
+  
+  useEffect(() => {
+    // Handle Cesium viewer thermal vision overlay
+    if (window.cesiumViewer) {
+      try {
+        const cesiumContainer = document.getElementById('cesium-container');
+        if (cesiumContainer) {
+          if (isThermalVision) {
+            // Apply thermal filter to Cesium
+            cesiumContainer.style.filter = 'sepia(90%) hue-rotate(180deg) contrast(150%) brightness(70%)';
+          } else {
+            // Remove thermal filter from Cesium
+            cesiumContainer.style.filter = '';
+          }
+        }
+      } catch (e) {
+        console.error("Error updating Cesium thermal vision:", e);
+      }
+    }
+    
+    // Also update Three.js scene rendering if needed
+    if (isThermalVision) {
+      gl.setClearColor(0x000022, 0.5); // Slight blue tint for thermal mode
+    } else {
+      gl.setClearColor(0x000000, 0); // Transparent when not in thermal mode
+    }
+  }, [isThermalVision, gl]);
+  
   return null;
 };
 
