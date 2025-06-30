@@ -30,8 +30,6 @@ const thermalFragmentShader = `
   uniform float maxHeight;
   uniform float noiseFactor;
 
-  #define DEBUG_MODE 0
-
   float rand(vec2 co){
       return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
   }
@@ -61,21 +59,6 @@ const thermalFragmentShader = `
     float heightRange = max(0.001, maxHeight - minHeight);
     float heightRatio = (vWorldPosition.y - minHeight) / heightRange;
 
-    #if DEBUG_MODE == 1
-      gl_FragColor = vec4(vec3(clamp(heightRatio, 0.0, 1.0)), 1.0);
-      return;
-    #elif DEBUG_MODE == 2
-      float scaledY = clamp((vWorldPosition.y + 0.0) / 50.0, 0.0, 1.0);
-      gl_FragColor = vec4(vec3(scaledY), 1.0);
-      return;
-    #elif DEBUG_MODE == 3
-      gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);
-      return;
-    #elif DEBUG_MODE == 4
-      gl_FragColor = vec4(0.0, 1.0, 0.0, 1.0);
-      return;
-    #endif
-
     float noise = (rand(vWorldPosition.xz * 0.1) - 0.5) * noiseFactor;
     float temperature = clamp(heightRatio + noise, 0.0, 1.0);
 
@@ -94,9 +77,6 @@ const terrainThermalShaderMaterial = new THREE.ShaderMaterial({
   vertexShader: thermalVertexShader,
   fragmentShader: thermalFragmentShader,
   side: THREE.DoubleSide,
-  defines: {
-    // DEBUG_MODE: 0
-  },
 });
 
 // Export materials used in thermal vision
@@ -120,7 +100,8 @@ const ThermalVisionEffect = () => {
         if (cesiumContainer) {
           if (isThermalVision) {
             // Apply thermal filter to Cesium
-            cesiumContainer.style.filter = 'sepia(90%) hue-rotate(180deg) contrast(150%) brightness(70%)';
+            cesiumContainer.style.filter = 'sepia(90%) hue-rotate(180deg) contrast(150%) brightness(70%) saturate(200%)';
+            cesiumContainer.style.transition = 'filter 0.3s ease';
           } else {
             // Remove thermal filter from Cesium
             cesiumContainer.style.filter = '';
@@ -131,9 +112,9 @@ const ThermalVisionEffect = () => {
       }
     }
     
-    // Also update Three.js scene rendering if needed
+    // Update Three.js scene rendering
     if (isThermalVision) {
-      gl.setClearColor(0x000022, 0.5); // Slight blue tint for thermal mode
+      gl.setClearColor(0x000022, 0); // Keep transparent for Cesium
     } else {
       gl.setClearColor(0x000000, 0); // Transparent when not in thermal mode
     }

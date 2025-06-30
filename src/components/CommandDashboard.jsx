@@ -6,7 +6,8 @@ const CommandDashboard = () => {
   const { 
     position, rotation, speed, altitude, lateralMovement, 
     setSpeed, setAltitude, setLateralMovement, setRotation,
-    setPosition, isThermalVision, setThermalVision, targets
+    setPosition, isThermalVision, setThermalVision, targets,
+    toCesiumCoords
   } = useUAVStore();
   const [coordinates, setCoordinates] = useState({ x: '', y: '', z: '' });
 
@@ -16,12 +17,20 @@ const CommandDashboard = () => {
     let z = parseFloat(coordinates.z);
     
     if (!isNaN(x) && !isNaN(y) && !isNaN(z)) {
-      x = Math.min(Math.max(x, -50), 50);
-      y = Math.min(Math.max(y, 10), 100);
-      z = Math.min(Math.max(z, -50), 50);
+      // Limit coordinates for reasonable Cesium bounds
+      x = Math.min(Math.max(x, -0.5), 0.5); // Longitude offset
+      y = Math.min(Math.max(y, 50), 2000);   // Altitude in meters
+      z = Math.min(Math.max(z, -0.5), 0.5);  // Latitude offset
       
-      useUAVStore.setState({ targetPosition: [x, y, z] });
-      console.log("UAV moving to position:", [x, y, z]);
+      // Convert to Cesium coordinates (longitude, altitude, latitude)
+      const cesiumCoords = [
+        -122.4194 + x, // Base longitude + offset
+        y,              // Altitude
+        37.7749 + z     // Base latitude + offset
+      ];
+      
+      useUAVStore.setState({ targetPosition: cesiumCoords });
+      console.log("UAV moving to Cesium position:", cesiumCoords);
     } else {
       console.warn("Invalid coordinates. Please enter valid numbers.");
     }
@@ -42,11 +51,11 @@ const CommandDashboard = () => {
     if (isNaN(numValue)) return '';
     
     switch(axis) {
-      case 'x':
-      case 'z':
-        return (numValue < -50) ? -50 : (numValue > 50 ? 50 : numValue);
-      case 'y':
-        return (numValue < 10) ? 10 : (numValue > 100 ? 100 : numValue);
+      case 'x': // Longitude offset
+      case 'z': // Latitude offset
+        return (numValue < -0.5) ? -0.5 : (numValue > 0.5 ? 0.5 : numValue);
+      case 'y': // Altitude
+        return (numValue < 50) ? 50 : (numValue > 2000 ? 2000 : numValue);
       default:
         return numValue;
     }
@@ -60,44 +69,47 @@ const CommandDashboard = () => {
 
       <Box sx={{ mb: 3 }}>
         <Typography variant="subtitle1" gutterBottom>
-          UAV Controls     
+          UAV Controls (Cesium Coordinates)
         </Typography>
-       <Grid container spacing={1}>
-  <Grid item xs={4}>
-    <TextField
-      label="X"
-      type="number"
-      value={coordinates.x}
-      onChange={(e) => setCoordinates(prev => ({ ...prev, x: validateCoordinate(e.target.value, 'x') }))}
-      size="small"
-      fullWidth
-    />
-  </Grid>
-  <Grid item xs={4}>
-    <TextField
-      label="Y"
-      type="number"
-      value={coordinates.y}
-      onChange={(e) => setCoordinates(prev => ({ ...prev, y: e.target.value }))}
-      onBlur={(e) => {
-        const validatedValue = validateCoordinate(e.target.value, 'y');
-        setCoordinates(prev => ({ ...prev, y: validatedValue }));
-      }}
-      size="small"
-      fullWidth
-    />
-  </Grid>
-  <Grid item xs={4}>
-    <TextField
-      label="Z"
-      type="number"
-      value={coordinates.z}
-      onChange={(e) => setCoordinates(prev => ({ ...prev, z: validateCoordinate(e.target.value, 'z') }))}
-      size="small"
-      fullWidth
-    />
-  </Grid>
-</Grid>
+        <Grid container spacing={1}>
+          <Grid item xs={4}>
+            <TextField
+              label="Lon Offset"
+              type="number"
+              value={coordinates.x}
+              onChange={(e) => setCoordinates(prev => ({ ...prev, x: validateCoordinate(e.target.value, 'x') }))}
+              size="small"
+              fullWidth
+              helperText="±0.5°"
+            />
+          </Grid>
+          <Grid item xs={4}>
+            <TextField
+              label="Altitude"
+              type="number"
+              value={coordinates.y}
+              onChange={(e) => setCoordinates(prev => ({ ...prev, y: e.target.value }))}
+              onBlur={(e) => {
+                const validatedValue = validateCoordinate(e.target.value, 'y');
+                setCoordinates(prev => ({ ...prev, y: validatedValue }));
+              }}
+              size="small"
+              fullWidth
+              helperText="50-2000m"
+            />
+          </Grid>
+          <Grid item xs={4}>
+            <TextField
+              label="Lat Offset"
+              type="number"
+              value={coordinates.z}
+              onChange={(e) => setCoordinates(prev => ({ ...prev, z: validateCoordinate(e.target.value, 'z') }))}
+              size="small"
+              fullWidth
+              helperText="±0.5°"
+            />
+          </Grid>
+        </Grid>
 
         <Button
           variant="contained"
@@ -114,11 +126,11 @@ const CommandDashboard = () => {
           UAV Current Position:
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          X: {position[0]?.toFixed(2)} Y: {position[1]?.toFixed(2)} Z: {position[2]?.toFixed(2)}
+          Lon: {position[0]?.toFixed(6)}° Alt: {position[1]?.toFixed(0)}m Lat: {position[2]?.toFixed(6)}°
         </Typography>
         <Divider sx={{ my: 1 }} />
         <Typography variant="subtitle2" color="text.secondary">
-          Altitude: {position[1]?.toFixed(2)}m
+          Altitude: {position[1]?.toFixed(0)}m above sea level
         </Typography>
         <Typography variant="subtitle2" color="text.secondary">
           Ground Speed: 35 km/h

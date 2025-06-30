@@ -1,137 +1,118 @@
 import React, { useRef, useEffect } from 'react';
 import { useUAVStore } from '../store/uavStore';
-import { useEnvironmentStore } from '../store/environmentStore'; // To know the main environment
-import { useGLTF } from '@react-three/drei';
-import { THERMAL_MATERIALS } from './ThermalVisionEffect'; // Ensure this path is correct
-import * as THREE from 'three'; // Use *_THREE
-
-const DAY_SKY_COLOR = new THREE.Color(0xFFFFFF); // Define Day Sky Color
-const NIGHT_SKY_COLOR = new THREE.Color(0x000000);
-const RAIN_SKY_COLOR = new THREE.Color(0x404050);
-const THERMAL_SKY_COLOR = new THREE.Color(0x000000);
+import { useEnvironmentStore } from '../store/environmentStore';
+import * as THREE from 'three';
 
 const LiveCameraView = ({ width = 400, height = 225 }) => {
   const canvasRef = useRef();
-  const customSceneRef = useRef(new THREE.Scene());
-  const customCameraRef = useRef();
   const rendererRef = useRef();
+  const sceneRef = useRef(new THREE.Scene());
+  const cameraRef = useRef();
   const animationFrameIdRef = useRef();
 
-  // Load the terrain model for the live view
-  const { scene: loadedTerrainModel } = useGLTF('/models/mountain/terrain.glb'); // Load model here too
-  const liveTerrainInstanceRef = useRef(null);
-  const liveTerrainOriginalMaterials = useRef(new Map()); // For this instance's original materials
-
-  const terrainScale = 100; // Consistent scale
-
-  // Effect for scene setup (runs once)
   useEffect(() => {
-    if (!canvasRef.current || !loadedTerrainModel) return;
+    if (!canvasRef.current) return;
 
-    console.log('[LiveCameraView] Setting up scene...');
+    console.log('[LiveCameraView] Setting up camera view...');
 
+    // Initialize Three.js renderer for the live view
     rendererRef.current = new THREE.WebGLRenderer({
       canvas: canvasRef.current,
       antialias: true,
     });
     rendererRef.current.setSize(width, height);
     rendererRef.current.setPixelRatio(window.devicePixelRatio);
-    // Initial clear color, will be updated in animate loop
-    rendererRef.current.setClearColor(DAY_SKY_COLOR); 
+    rendererRef.current.setClearColor(0x87CEEB); // Sky blue background
 
-    customCameraRef.current = new THREE.PerspectiveCamera(50, width / height, 0.1, 2000); // Increased far plane
+    // Create camera for live view
+    cameraRef.current = new THREE.PerspectiveCamera(60, width / height, 0.1, 10000);
 
-    // Lighting for the live camera scene (consistent "day-like" lighting)
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
-    customSceneRef.current.add(ambientLight);
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.8);
-    directionalLight.position.set(10, 15, 10); // Adjusted light position
-    customSceneRef.current.add(directionalLight);
+    // Add basic lighting
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    sceneRef.current.add(ambientLight);
+    
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    directionalLight.position.set(10, 10, 5);
+    sceneRef.current.add(directionalLight);
 
-    // Clone the loaded terrain model for use in this scene
-    if (loadedTerrainModel && !liveTerrainInstanceRef.current) {
-      console.log('[LiveCameraView] Cloning terrain model...');
-      const terrainClone = loadedTerrainModel.clone(true);
-      // Apply scale directly to the clone for this scene
-      terrainClone.scale.set(terrainScale, terrainScale, terrainScale);
-      terrainClone.position.set(0, 0, 0); // Position at origin of custom scene
-
-      const materialsMap = new Map();
-      terrainClone.traverse((node) => {
-        if (node.isMesh && node.material) {
-          materialsMap.set(node.uuid, node.material.clone());
-        }
-      });
-      liveTerrainOriginalMaterials.current = materialsMap;
-      liveTerrainInstanceRef.current = terrainClone;
-      customSceneRef.current.add(liveTerrainInstanceRef.current);
-      console.log('[LiveCameraView] Terrain model added to custom scene.');
-      // No need to set uniforms here, as THERMAL_MATERIALS.terrain is shared and configured by Terrain.jsx
-    }
+    // Add a simple ground plane for reference
+    const groundGeometry = new THREE.PlaneGeometry(1000, 1000);
+    const groundMaterial = new THREE.MeshLambertMaterial({ color: 0x90EE90 });
+    const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = 0;
+    sceneRef.current.add(ground);
 
     const animate = () => {
       animationFrameIdRef.current = requestAnimationFrame(animate);
-      if (!rendererRef.current || !customCameraRef.current || !customSceneRef.current || !liveTerrainInstanceRef.current) return;
+      
+      if (!rendererRef.current || !cameraRef.current || !sceneRef.current) return;
 
       const { position: uavPosition, rotation: uavRotation, isThermalVision } = useUAVStore.getState();
       const { environmentMode } = useEnvironmentStore.getState();
 
-      const uavWorldPosition = new THREE.Vector3().fromArray(uavPosition);
-      const uavWorldEuler = new THREE.Euler().fromArray(uavRotation);
+      if (uavPosition && uavRotation) {
+        // Position camera at UAV location
+        cameraRef.current.position.set(
+          uavPosition[0],
+          uavPosition[1],
+          uavPosition[2]
+        );
 
-      customCameraRef.current.position.copy(uavWorldPosition);
-      customCameraRef.current.rotation.copy(uavWorldEuler);
-      
-      if (liveTerrainInstanceRef.current) { // Check if terrain instance exists
-        liveTerrainInstanceRef.current.traverse((node) => {
-          if (node.isMesh) {
-            if (isThermalVision) {
-              if (node.material !== THERMAL_MATERIALS.terrain) {
-                // console.log('[LiveCameraView] Applying THERMAL material to terrain.');
-                node.material = THERMAL_MATERIALS.terrain;
-              }
-            } else {
-              const originalMat = liveTerrainOriginalMaterials.current.get(node.uuid);
-              if (originalMat && node.material !== originalMat) {
-                // console.log('[LiveCameraView] Restoring ORIGINAL material to terrain.');
-                node.material = originalMat;
-              } else if (!originalMat) {
-                // console.warn(`[LiveCameraView] No original material for mesh ${node.uuid}`);
-              }
-            }
+        // Apply UAV rotation to camera
+        cameraRef.current.rotation.set(
+          uavRotation[0],
+          uavRotation[1],
+          uavRotation[2]
+        );
+      }
+
+      // Adjust rendering based on thermal vision and environment
+      if (isThermalVision) {
+        rendererRef.current.setClearColor(0x000022);
+        // Apply thermal effect to scene objects
+        sceneRef.current.traverse((object) => {
+          if (object.isMesh && object.material) {
+            object.material.emissive = new THREE.Color(0x440000);
           }
         });
-      }
-      
-      // Adjust background color based on thermal/environment (optional, simple sky)
-      if (isThermalVision) {
-        rendererRef.current.setClearColor(THERMAL_SKY_COLOR);
       } else {
+        // Reset materials
+        sceneRef.current.traverse((object) => {
+          if (object.isMesh && object.material) {
+            object.material.emissive = new THREE.Color(0x000000);
+          }
+        });
+
         switch(environmentMode) {
           case 'night': 
-            rendererRef.current.setClearColor(NIGHT_SKY_COLOR); 
+            rendererRef.current.setClearColor(0x000011); 
             break;
           case 'rain': 
-            rendererRef.current.setClearColor(RAIN_SKY_COLOR); 
+            rendererRef.current.setClearColor(0x404050); 
             break;
-          case 'day': // Explicitly set day sky color
+          case 'day':
           default:
-            rendererRef.current.setClearColor(DAY_SKY_COLOR); 
+            rendererRef.current.setClearColor(0x87CEEB); 
             break;
         }
       }
 
-      rendererRef.current.render(customSceneRef.current, customCameraRef.current);
+      rendererRef.current.render(sceneRef.current, cameraRef.current);
     };
+
     animate();
 
     return () => {
       if (animationFrameIdRef.current) {
         cancelAnimationFrame(animationFrameIdRef.current);
       }
+      if (rendererRef.current) {
+        rendererRef.current.dispose();
+      }
       console.log('[LiveCameraView] Cleaned up.');
     };
-  }, [width, height, loadedTerrainModel, terrainScale]); // Added terrainScale
+  }, [width, height]);
 
   return (
     <canvas
@@ -140,17 +121,13 @@ const LiveCameraView = ({ width = 400, height = 225 }) => {
         width: `${width}px`,
         height: `${height}px`,
         borderRadius: '8px',
-        border: '1px solid #555',
-        // Add these styles to prevent any controls from showing
+        border: '2px solid #555',
         position: 'relative',
-        zIndex: 5
+        zIndex: 5,
+        background: '#000'
       }}
-      // If this is part of a video element or has controls
-      // controls={false}
     />
   );
 };
-
-useGLTF.preload('/models/mountain/terrain.glb'); // Preload for LiveCameraView as well
 
 export default LiveCameraView;
