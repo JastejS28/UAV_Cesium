@@ -4,10 +4,11 @@ import { useUAVStore } from '../store/uavStore';
 import * as THREE from 'three';
 
 const CesiumTerrain = () => {
-  const { camera, scene } = useThree();
+  const { camera } = useThree();
   const { position: uavPosition } = useUAVStore();
   const cesiumReadyRef = useRef(false);
   const lastUpdateTime = useRef(0);
+  const initializationAttempted = useRef(false);
 
   // Wait for Cesium to be ready
   useEffect(() => {
@@ -16,11 +17,26 @@ const CesiumTerrain = () => {
       cesiumReadyRef.current = true;
     };
 
-    if (window.cesiumInitialized) {
-      handleCesiumReady();
-    } else {
-      window.addEventListener('cesiumReady', handleCesiumReady);
-    }
+    const checkCesiumStatus = () => {
+      if (window.cesiumError) {
+        console.error('Cesium failed to initialize:', window.cesiumError);
+        return;
+      }
+
+      if (window.cesiumInitialized && window.cesiumViewer) {
+        handleCesiumReady();
+      } else if (!initializationAttempted.current) {
+        initializationAttempted.current = true;
+        // Wait a bit more for Cesium to initialize
+        setTimeout(checkCesiumStatus, 1000);
+      }
+    };
+
+    // Check immediately
+    checkCesiumStatus();
+
+    // Also listen for the custom event
+    window.addEventListener('cesiumReady', handleCesiumReady);
 
     return () => {
       window.removeEventListener('cesiumReady', handleCesiumReady);
@@ -33,45 +49,63 @@ const CesiumTerrain = () => {
 
     const now = state.clock.elapsedTime;
     // Throttle updates to avoid performance issues
-    if (now - lastUpdateTime.current < 0.016) return; // ~60fps
+    if (now - lastUpdateTime.current < 0.1) return; // 10fps for camera updates
     lastUpdateTime.current = now;
 
     try {
       const cesiumViewer = window.cesiumViewer;
       const cesiumCamera = cesiumViewer.camera;
 
-      // Convert UAV world coordinates to Cesium coordinates
-      // Assuming UAV coordinates are in a local coordinate system
-      // You may need to adjust this conversion based on your coordinate system
-      const uavLongitude = uavPosition[0] * 0.001 - 122.4194; // Scale and offset
-      const uavLatitude = uavPosition[2] * 0.001 + 37.7749;   // Scale and offset
-      const uavHeight = Math.max(uavPosition[1] * 10, 100);   // Scale height, minimum 100m
+      // UAV position is already in Cesium coordinates [longitude, altitude, latitude]
+      const uavLongitude = uavPosition[0];
+      const uavLatitude = uavPosition[2];
+      const uavHeight = Math.max(uavPosition[1], 100); // Minimum 100m altitude
 
-      // Update Cesium camera to follow UAV
+      // Update Cesium camera to follow UAV with offset
+      const cameraOffset = {
+        longitude: uavLongitude,
+        latitude: uavLatitude - 0.001, // Slightly south of UAV
+        height: uavHeight + 200 // 200m above UAV
+      };
+
       const destination = Cesium.Cartesian3.fromDegrees(
+        cameraOffset.longitude,
+        cameraOffset.latitude,
+        cameraOffset.height
+      );
+
+      // Look at UAV position
+      const uavCartesian = Cesium.Cartesian3.fromDegrees(
         uavLongitude,
         uavLatitude,
-        uavHeight + 50 // Camera slightly above UAV
+        uavHeight
       );
+
+      // Calculate direction from camera to UAV
+      const direction = Cesium.Cartesian3.subtract(
+        uavCartesian,
+        destination,
+        new Cesium.Cartesian3()
+      );
+      Cesium.Cartesian3.normalize(direction, direction);
 
       // Smooth camera movement
       cesiumCamera.setView({
         destination: destination,
         orientation: {
-          heading: Cesium.Math.toRadians(0.0),
-          pitch: Cesium.Math.toRadians(-15.0),
-          roll: 0.0,
+          direction: direction,
+          up: Cesium.Cartesian3.UNIT_Z,
         },
       });
 
       // Sync Three.js camera with Cesium camera for consistent rendering
       if (cesiumCamera.position && cesiumCamera.direction && cesiumCamera.up) {
-        // Convert Cesium camera position to Three.js coordinates
+        // Convert Cesium camera position to Three.js world coordinates
         const cesiumPos = cesiumCamera.position;
         const cesiumDir = cesiumCamera.direction;
         const cesiumUp = cesiumCamera.up;
 
-        // Update Three.js camera
+        // Update Three.js camera position
         camera.position.copy(cesiumPos);
         
         // Calculate look-at target
@@ -87,7 +121,7 @@ const CesiumTerrain = () => {
           camera.fov = THREE.MathUtils.radToDeg(cesiumCamera.frustum.fovy || Math.PI / 4);
           camera.aspect = cesiumCamera.frustum.aspectRatio || (window.innerWidth / window.innerHeight);
           camera.near = cesiumCamera.frustum.near || 0.1;
-          camera.far = cesiumCamera.frustum.far || 10000;
+          camera.far = cesiumCamera.frustum.far || 100000;
           camera.updateProjectionMatrix();
         }
       }

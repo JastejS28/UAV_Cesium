@@ -16,6 +16,7 @@
         padding: 0;
         overflow: hidden;
         font-family: sans-serif;
+        background: #000;
       }
 
       #cesium-container {
@@ -68,11 +69,24 @@
         width: 100% !important;
         height: 100% !important;
       }
+
+      /* Loading indicator */
+      .cesium-loading {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        color: white;
+        font-size: 18px;
+        z-index: 10;
+      }
     </style>
   </head>
   <body>
     <!-- Cesium container -->
-    <div id="cesium-container"></div>
+    <div id="cesium-container">
+      <div class="cesium-loading">Loading Cesium...</div>
+    </div>
     
     <!-- Main React app container -->
     <div id="root"></div>
@@ -83,11 +97,49 @@
       // Global variables
       window.cesiumViewer = null;
       window.cesiumInitialized = false;
+      window.cesiumError = null;
+
+      // Remove loading indicator
+      function removeLoadingIndicator() {
+        const loading = document.querySelector('.cesium-loading');
+        if (loading) {
+          loading.remove();
+        }
+      }
+
+      // Show error message
+      function showError(message) {
+        const container = document.getElementById('cesium-container');
+        container.innerHTML = `
+          <div style="
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            height: 100%; 
+            background: #1a1a1a; 
+            color: white; 
+            font-family: sans-serif;
+            text-align: center;
+            padding: 20px;
+          ">
+            <div>
+              <h2>Cesium Loading Error</h2>
+              <p>${message}</p>
+              <p style="font-size: 12px; opacity: 0.7;">Check console for more details</p>
+            </div>
+          </div>
+        `;
+      }
 
       document.addEventListener('DOMContentLoaded', async function() {
         try {
           console.log('Initializing Cesium...');
           
+          // Check if Cesium is available
+          if (typeof Cesium === 'undefined') {
+            throw new Error('Cesium library not loaded');
+          }
+
           // Set your Cesium Ion access token
           Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI4MTQ1M2Y3OC05ZDBmLTQyZDgtYTJhOS02NjVkNWM3MWUyMTciLCJpZCI6MzE0ODM0LCJpYXQiOjE3NTEyMjU3MjB9.D2cqqXXq5qUqVsy7VzGz8I6tJB6HYBcqM1xRcexKLP4';
 
@@ -108,10 +160,17 @@
             scene3DOnly: true,
             shouldAnimate: true,
             
-            // Terrain and imagery settings
-            terrainProvider: await Cesium.createWorldTerrainAsync(),
-            imageryProvider: await Cesium.createWorldImageryAsync(),
+            // Use basic imagery provider to avoid loading issues
+            imageryProvider: new Cesium.OpenStreetMapImageryProvider({
+              url: 'https://a.tile.openstreetmap.org/'
+            }),
+            
+            // Use basic terrain provider initially
+            terrainProvider: new Cesium.EllipsoidTerrainProvider(),
           });
+
+          // Remove loading indicator
+          removeLoadingIndicator();
 
           // Configure the scene
           viewer.scene.globe.enableLighting = true;
@@ -121,15 +180,34 @@
           // Disable fog for better visibility
           viewer.scene.fog.enabled = false;
           
-          // Set initial camera position (somewhere interesting)
+          // Set initial camera position (San Francisco Bay Area)
           viewer.camera.setView({
-            destination: Cesium.Cartesian3.fromDegrees(-122.4194, 37.7749, 1000), // San Francisco
+            destination: Cesium.Cartesian3.fromDegrees(-122.4194, 37.7749, 1000),
             orientation: {
               heading: Cesium.Math.toRadians(0.0),
               pitch: Cesium.Math.toRadians(-15.0),
               roll: 0.0,
             },
           });
+
+          // Try to load better terrain asynchronously
+          try {
+            const terrainProvider = await Cesium.createWorldTerrainAsync();
+            viewer.terrainProvider = terrainProvider;
+            console.log('World terrain loaded successfully');
+          } catch (terrainError) {
+            console.warn('Failed to load world terrain, using ellipsoid:', terrainError);
+          }
+
+          // Try to load better imagery asynchronously
+          try {
+            const imageryProvider = await Cesium.createWorldImageryAsync();
+            viewer.imageryLayers.removeAll();
+            viewer.imageryLayers.addImageryProvider(imageryProvider);
+            console.log('World imagery loaded successfully');
+          } catch (imageryError) {
+            console.warn('Failed to load world imagery, using OpenStreetMap:', imageryError);
+          }
 
           // Make the viewer globally accessible
           window.cesiumViewer = viewer;
@@ -142,28 +220,18 @@
 
         } catch (error) {
           console.error('Error initializing Cesium:', error);
+          window.cesiumError = error;
           
-          // Fallback: show error message
-          const container = document.getElementById('cesium-container');
-          container.innerHTML = `
-            <div style="
-              display: flex; 
-              align-items: center; 
-              justify-content: center; 
-              height: 100%; 
-              background: #1a1a1a; 
-              color: white; 
-              font-family: sans-serif;
-              text-align: center;
-              padding: 20px;
-            ">
-              <div>
-                <h2>Cesium Loading Error</h2>
-                <p>Failed to initialize Cesium viewer.</p>
-                <p style="font-size: 12px; opacity: 0.7;">${error.message}</p>
-              </div>
-            </div>
-          `;
+          // Show error message
+          showError(`Failed to initialize Cesium viewer: ${error.message}`);
+        }
+      });
+
+      // Handle Cesium loading errors
+      window.addEventListener('error', function(event) {
+        if (event.filename && event.filename.includes('Cesium')) {
+          console.error('Cesium loading error:', event.error);
+          window.cesiumError = event.error;
         }
       });
     </script>

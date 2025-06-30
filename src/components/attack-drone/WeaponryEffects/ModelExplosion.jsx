@@ -1,6 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 
 const ModelExplosion = ({ position, id, skipSound = false }) => {
@@ -8,9 +7,6 @@ const ModelExplosion = ({ position, id, skipSound = false }) => {
   const startTime = useRef(Date.now());
   const [finished, setFinished] = useState(false);
   
-  // Try to load explosion model - use true for the second parameter to suppress errors
-  const { scene } = useGLTF('/models/effects/explosion.glb', true);
-
   // Create and play explosion sound
   useEffect(() => {
     // Set a timeout to remove the explosion
@@ -20,39 +16,15 @@ const ModelExplosion = ({ position, id, skipSound = false }) => {
     
     // Only play sound if skipSound is false
     if (!skipSound) {
-      // Play explosion sound with multiple path attempts
-      const soundPaths = [
-        '/sounds/explosion.mp3',
-        '/assets/sounds/explosion.mp3',
-        '/public/sounds/explosion.mp3',
-        '/models/sounds/explosion.mp3',
-        '/explosion.mp3',
-        '/sounds/explosion.wav',
-        '/assets/sounds/explosion.wav'
-      ];
-      
-      // Try each path until one works
-      let played = false;
-      for (const path of soundPaths) {
-        if (played) break;
-        
-        try {
-          const audio = new Audio(path);
-          audio.volume = 0.7;
-          
-          // Use promise-based approach for better error handling
-          audio.play()
-            .then(() => {
-              console.log(`Successfully played explosion sound from: ${path}`);
-              played = true;
-            })
-            .catch(e => {
-              console.log(`Failed to play sound from ${path}: ${e.message}`);
-              // Continue to next path
-            });
-        } catch (error) {
-          console.log(`Error with sound at ${path}: ${error.message}`);
-        }
+      // Try to play explosion sound
+      try {
+        const audio = new Audio('/sounds/explosion.mp3');
+        audio.volume = 0.7;
+        audio.play().catch(e => {
+          console.log('Failed to play explosion sound:', e.message);
+        });
+      } catch (error) {
+        console.log("Error playing explosion sound:", error.message);
       }
     }
     
@@ -68,8 +40,8 @@ const ModelExplosion = ({ position, id, skipSound = false }) => {
     const elapsed = (Date.now() - startTime.current) / 1000;
     
     // Scale animation
-    const baseScale = 0.2; // Smaller starting scale
-    const maxScale = 1.2;  // Smaller maximum scale
+    const baseScale = 0.2;
+    const maxScale = 1.2;
     const scale = Math.min(maxScale, baseScale + (elapsed < 0.5 ? elapsed * 2 : 0.5 * 2 + (elapsed - 0.5) * 0.8));
     
     if (explosionRef.current) {
@@ -91,29 +63,31 @@ const ModelExplosion = ({ position, id, skipSound = false }) => {
 
   if (finished) return null;
 
-  // If no model is available, use a simple sphere as fallback
-  if (!scene) {
-    return (
-      <mesh position={position}>
-        <sphereGeometry args={[1, 16, 16]} />
-        <meshBasicMaterial color="#FF6600" />
-      </mesh>
-    );
-  }
-
-  // Return the 3D model
+  // Use a simple sphere as explosion effect since model loading might fail
   return (
-    <primitive 
-      ref={explosionRef}
-      object={scene.clone()}
-      position={position}
-      scale={[0.08, 0.08, 0.08]}
-      key={id || `expl-${startTime.current}`}
-    />
+    <group ref={explosionRef} position={position}>
+      {/* Main explosion sphere */}
+      <mesh>
+        <sphereGeometry args={[2, 16, 16]} />
+        <meshBasicMaterial color="#FF6600" transparent opacity={0.8} />
+      </mesh>
+      
+      {/* Inner bright core */}
+      <mesh>
+        <sphereGeometry args={[1, 16, 16]} />
+        <meshBasicMaterial color="#FFFF00" transparent opacity={0.9} />
+      </mesh>
+      
+      {/* Outer smoke */}
+      <mesh>
+        <sphereGeometry args={[3, 16, 16]} />
+        <meshBasicMaterial color="#444444" transparent opacity={0.3} />
+      </mesh>
+      
+      {/* Point light for illumination */}
+      <pointLight color="#FF6600" intensity={5} distance={20} decay={2} />
+    </group>
   );
 };
 
 export default ModelExplosion;
-
-// Preload the model to avoid glitches during first explosion
-useGLTF.preload('/models/effects/explosion.glb', true);
